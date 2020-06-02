@@ -1,0 +1,705 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title> graphql/resolvers.js</title>
+
+  <script src="https://cdn.jsdelivr.net/gh/google/code-prettify@master/loader/run_prettify.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="./build/entry.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+  <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,400,700|Inconsolata,700" rel="stylesheet">
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.6.3/css/all.css" integrity="sha384-UHRtZLI+pbxtHCWp1t77Bi1L4ZtiqrqD80Kn4Z8NTSRyMA2Fd33n5dQ8lWUE00s/" crossorigin="anonymous">
+  <link type="text/css" rel="stylesheet" href="https://jmblog.github.io/color-themes-for-google-code-prettify/themes/tomorrow-night.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/app.min.css">
+  <link type="text/css" rel="stylesheet" href="styles/iframe.css">
+  <link type="text/css" rel="stylesheet" href="">
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+
+  
+</head>
+
+
+
+<body class="layout small-header">
+    <div id="stickyNavbarOverlay"></div>
+    
+
+<div class="top-nav">
+    <div class="inner">
+        <a id="hamburger" role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+            <span aria-hidden="true"></span>
+        </a>
+        <div class="logo">
+            
+            
+        </div>
+        <div class="menu">
+            
+            <div class="navigation">
+                <a
+                    href="index.html"
+                    class="link"
+                >
+                    API Documentation
+                </a>
+                <div class="dropdown is-hoverable is-right">
+                    <a class="dropdown-trigger link">
+                        Tutorials
+                        <i class="fas fa-chevron-down fa-xs"></i>
+                    </a>
+                    <div class="dropdown-menu">
+                        <div class="dropdown-content">
+                        
+                        </div>
+                    </div>
+                </div>
+                
+                
+            </div>
+        </div>
+    </div>
+</div>
+    <div id="main">
+        <div
+            class="sidebar "
+            id="sidebarNav"
+        >
+            
+            <nav>
+                
+                    <h2><a href="index.html">Documentation</a></h2><div class="category"><h3>Modules</h3><ul><li><a href="module-App.html">App</a></li><li><a href="module-Authorization.html">Authorization</a></li><li><a href="module-ModelAddedForm.html">ModelAddedForm</a></li><li><a href="module-ModelForm.html">ModelForm</a></li><li><a href="module-ModelSolutionForm.html">ModelSolutionForm</a></li><li><a href="module-ModelUserForm.html">ModelUserForm</a></li><li><a href="module-Resolvers.html">Resolvers</a></li><li><a href="module-Schema.html">Schema</a></li></ul></div>
+                
+            </nav>
+        </div>
+        <div class="core" id="main-content-wrapper">
+            <div class="content">
+                <header class="page-title">
+                    <p>Source</p>
+                    <h1>graphql/resolvers.js</h1>
+                </header>
+                
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/** @module Resolvers **/
+
+/**
+ * 
+ *  A library to help you hash passwords.
+ */
+
+const bcrypt = require("bcryptjs");
+
+/**
+ * A library of string validators and sanitizers.
+ */
+
+const validator = require("validator");
+
+/**
+ * A library which generate json web token.
+ */
+
+const jwt = require("jsonwebtoken");
+
+/**
+ * A dependency of user model.
+ */
+
+const User = require("../models/user");
+
+/**
+ * 
+ *  A dependency of form model.
+ */
+const Form = require("../models/form");
+
+/**
+ * 
+ * A dependency of added forms models.
+ */
+const AddedForm = require("../models/addedForm");
+
+/**
+ * 
+ * A dependency of resolved forms model.
+ */
+const Solution = require("../models/solution");
+
+
+module.exports = {
+  /**
+   * @param {Object} userInput - method that create a new user
+   * @returns {Object}
+ */
+
+  createUser: async function ({ userInput }, req) {
+    //   const email = args.userInput.email;
+    const errors = [];
+
+    if (!userInput.name || userInput.name.length &lt; 3) {
+      errors.push({ message: "You should add a valid name" });
+    }
+
+    if (!validator.isEmail(userInput.email)) {
+      errors.push({ message: "E-Mail is invalid." });
+    }
+    if (
+      validator.isEmpty(userInput.password) ||
+      !validator.isLength(userInput.password, { min: 5 })
+    ) {
+      errors.push({ message: "Password is too short!" });
+    }
+    if (errors.length > 0) {
+      const error = new Error("Invalid input.");
+      error.data = errors;
+      error.code = 422;
+      throw error;
+    }
+    const existingUser = await User.findOne({ email: userInput.email });
+    if (existingUser) {
+      const error = new Error("User exists already!");
+      throw error;
+    }
+    const hashedPw = await bcrypt.hash(userInput.password, 12);
+    const user = new User({
+      email: userInput.email,
+      name: userInput.name,
+      password: hashedPw,
+    });
+    const createdUser = await user.save();
+    return { ...createdUser._doc, _id: createdUser._id.toString() };
+  },
+
+    /**
+     * @param {Object} userInput: { email, password } - method that check if login credentials are correct
+     * @returns {Object} token
+   */
+  login: async function ({ email, password }) {
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      const error = new Error("User not found.");
+      error.code = 401;
+      throw error;
+    }
+    const isEqual = await bcrypt.compare(password, user.password);
+    if (!isEqual) {
+      const error = new Error("Password is incorrect.");
+      error.code = 401;
+      throw error;
+    }
+    const token = jwt.sign(
+      {
+        userId: user._id.toString(),
+        email: user.email,
+      },
+      "somesupersecretsecret",
+      { expiresIn: "1h" }
+    );
+    return { token: token, userId: user._id.toString() };
+  },
+
+    /**
+     * @param {Object} userInput: { formInput } - method that allow us to create a form
+     * @returns {Object}
+   */
+  createForm: async function ({ formInput }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+
+    const errors = [];
+    if (
+      validator.isEmpty(formInput.title) ||
+      !validator.isLength(formInput.title, { min: 3 })
+    ) {
+      errors.push({ message: "Title is invalid." });
+    }
+    if (
+      validator.isEmpty(formInput.content) ||
+      !validator.isLength(formInput.content, { min: 3 })
+    ) {
+      errors.push({ message: "Content is invalid." });
+    }
+    if (errors.length > 0) {
+      const error = new Error("Invalid input.");
+      error.data = errors;
+      error.code = 422;
+      throw error;
+    }
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      const error = new Error("Invalid user.");
+      error.code = 401;
+      throw error;
+    }
+
+    const form = new Form({
+      title: formInput.title,
+      content: formInput.content,
+      questions: formInput.questions,
+      formType: formInput.formType,
+      creator: user,
+    });
+
+    const createdForm = await form.save();
+    user.forms.push(createdForm);
+    await user.save();
+    return {
+      ...createdForm._doc,
+      _id: createdForm._id.toString(),
+      createdAt: createdForm.createdAt.toISOString(),
+      updatedAt: createdForm.updatedAt.toISOString(),
+    };
+  },
+
+  /**
+     * @param {Object} saveForm: { formInput } - method that allow us to save a form
+     * @returns {Object}
+   */
+  saveForm: async function ({ formInput }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated you cant save a form!");
+      error.code = 401;
+      throw error;
+    }
+
+    const errors = [];
+    if (
+      validator.isEmpty(formInput.title) ||
+      !validator.isLength(formInput.title, { min: 5 })
+    ) {
+      errors.push({ message: "Title is invalid." });
+    }
+    if (
+      validator.isEmpty(formInput.content) ||
+      !validator.isLength(formInput.content, { min: 5 })
+    ) {
+      errors.push({ message: "Content is invalid." });
+    }
+
+    if (errors.length > 0) {
+      const error = new Error("Invalid input.");
+      error.data = errors;
+      error.code = 422;
+      throw error;
+    }
+
+    const addedForm = new AddedForm({
+      title: formInput.title,
+      content: formInput.content,
+      questions: formInput.questions,
+      formType: formInput.formType,
+      parentId: formInput.parentId,
+    });
+
+    const user = await User.findById(req.userId);
+
+    if (!user) {
+      const error = new Error("Invalid user.");
+      error.code = 401;
+      throw error;
+    }
+
+    const createdForm = await addedForm.save();
+    if (!user.addedForms.includes(formInput.parentId)) {
+      user.addedForms.push(formInput.parentId);
+    }
+    await user.save();
+
+    return {
+      ...createdForm._doc,
+      _id: createdForm._id.toString(),
+      createdAt: createdForm.createdAt.toISOString(),
+      updatedAt: createdForm.updatedAt.toISOString(),
+    };
+  },
+
+  addedForms: async function ({ page, name }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    if (!page) {
+      page = 1;
+    }
+    const totalForms = await AddedForm.find().countDocuments();
+
+    let forms;
+    if (name) {
+      forms = await AddedForm.find({
+        title: name,
+      });
+    } else {
+      forms = await AddedForm.find();
+    }
+    // .sort({ createdAt: -1 })
+    // .skip((page - 1) * perPage)
+    // .limit(perPage)
+    // .populate('creator');
+
+    return {
+      forms: forms.map((p) => {
+        return {
+          ...p._doc,
+          _id: p._id.toString(),
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+        };
+      }),
+      totalForms: totalForms,
+    };
+  },
+
+  addedForm: async function ({ id }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const form = await AddedForm.findById(id);
+    if (!form) {
+      const error = new Error("No form found!");
+      error.code = 404;
+      throw error;
+    }
+    return {
+      ...form._doc,
+      _id: form._id.toString(),
+      createdAt: form.createdAt.toISOString(),
+      updatedAt: form.updatedAt.toISOString(),
+    };
+  },
+
+  availableForms: async function ({ page }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    if (!page) {
+      page = 1;
+    }
+
+    const totalForms = await Form.find().countDocuments();
+    const user = await User.findById(req.userId);
+    const userAddedForms = await user.addedForms;
+
+    const forms = await Form.find({ _id: { $nin: [...userAddedForms] } });
+
+    return {
+      forms: forms.map((p) => {
+        return {
+          ...p._doc,
+          _id: p._id.toString(),
+        };
+      }),
+      totalForms: totalForms,
+    };
+  },
+
+
+/**
+ * @memberof Example
+ */
+  forms: async function ({ page }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    if (!page) {
+      page = 1;
+    }
+    const perPage = 2;
+    const totalForms = await Form.find().countDocuments();
+    const forms = await Form.find()
+      // .sort({ createdAt: -1 })
+      // .skip((page - 1) * perPage)
+      // .limit(perPage)
+      .populate("creator");
+    return {
+      forms: forms.map((p) => {
+        return {
+          ...p._doc,
+          _id: p._id.toString(),
+          createdAt: p.createdAt.toISOString(),
+          updatedAt: p.updatedAt.toISOString(),
+        };
+      }),
+      totalForms: totalForms,
+    };
+  },
+
+  form: async function ({ id }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const form = await Form.findById(id).populate("creator");
+    if (!form) {
+      const error = new Error("No form found!");
+      error.code = 404;
+      throw error;
+    }
+    return {
+      ...form._doc,
+      _id: form._id.toString(),
+      createdAt: form.createdAt.toISOString(),
+      updatedAt: form.updatedAt.toISOString(),
+    };
+  },
+
+  updateForm: async function ({ id, formInput }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const form = await Form.findById(id).populate("creator");
+    if (!form) {
+      const error = new Error("No forms found!");
+      error.code = 404;
+      throw error;
+    }
+    // if (form.creator._id.toString() !== req.userId.toString()) {
+    //   const error = new Error('Not authorized!');
+    //   error.code = 403;
+    //   throw error;
+    // }
+    const errors = [];
+    if (
+      validator.isEmpty(formInput.title) ||
+      !validator.isLength(formInput.title, { min: 5 })
+    ) {
+      errors.push({ message: "Title is invalid." });
+    }
+    if (
+      validator.isEmpty(formInput.content) ||
+      !validator.isLength(formInput.content, { min: 5 })
+    ) {
+      errors.push({ message: "Content is invalid." });
+    }
+    if (errors.length > 0) {
+      const error = new Error("Invalid input.");
+      error.data = errors;
+      error.code = 422;
+      throw error;
+    }
+    form.title = formInput.title;
+    form.content = formInput.content;
+    form.questions = formInput.questions;
+
+    const updatedForm = await form.save();
+    return {
+      ...updatedForm._doc,
+      _id: updatedForm._id.toString(),
+      createdAt: updatedForm.createdAt.toISOString(),
+      updatedAt: updatedForm.updatedAt.toISOString(),
+    };
+  },
+
+  deleteForm: async function ({ id }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const form = await Form.findById(id);
+    if (!form) {
+      const error = new Error("No form found!");
+      error.code = 404;
+      throw error;
+    }
+    if (form.creator.toString() !== req.userId.toString()) {
+      const error = new Error("Not authorized!");
+      error.code = 403;
+      throw error;
+    }
+    await Form.findByIdAndRemove(id);
+
+    const user = await User.findById(req.userId);
+    user.forms.pull(id);
+    await user.save();
+    return true;
+  },
+
+  user: async function (args, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const user = await User.findById(req.userId);
+    if (!user) {
+      const error = new Error("No user found!");
+      error.code = 404;
+      throw error;
+    }
+    return { ...user._doc, _id: user._id.toString() };
+  },
+
+  users: async function (args, req) {
+    const totalUsers = await User.find().countDocuments();
+    const users = await User.find();
+
+    return {
+      users: users.map((p) => {
+        return {
+          ...p._doc,
+          _id: p._id.toString(),
+          name: p.name,
+          email: p.email,
+          status: p.status,
+          forms: p.forms,
+        };
+      }),
+      totalUsers: totalUsers,
+    };
+  },
+
+  updateStatus: async function ({ status }, req) {
+    if (!req.isAuth) {
+      const error = new Error("Not authenticated!");
+      error.code = 401;
+      throw error;
+    }
+    const user = await User.findById(req.userId);
+    if (!user) {
+      const error = new Error("No user found!");
+      error.code = 404;
+      throw error;
+    }
+    user.status = status;
+    await user.save();
+    return { ...user._doc, _id: user._id.toString() };
+  },
+
+  solve: async function ({ solutionInput }, req) {
+    const { name, email, number, solution, surveyId } = solutionInput;
+
+    const solutionModel = new Solution({
+      email,
+      number,
+      name,
+      solution,
+      surveyId,
+    });
+
+    const createdSolution = await solutionModel.save();
+    return { ...createdSolution._doc, _id: createdSolution._id.toString() };
+  },
+
+  solutions: async function (args, req) {
+    const total = await Solution.find().countDocuments();
+    const solutions = await Solution.find();
+
+    const { name, email, number, surveyId } = args;
+
+    const byName = (s) => {
+      if (name &amp;&amp; !s.name.includes(name)) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const byEmail = (s) => {
+      if (email &amp;&amp; !s.email.includes(email)) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const byNumber = (s) => {
+      if (number &amp;&amp; !s.number.includes(number)) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const bySurveyId = (s) => {
+      console.log(s.surveyId, surveyId, s.surveyId.includes(surveyId));
+
+      if (surveyId &amp;&amp; !s.surveyId.includes(surveyId)) {
+        return false;
+      }
+
+      if (surveyId &amp;&amp; s.surveyId.includes(surveyId)) {
+        return true;
+      }
+
+      return true;
+    };
+
+    return {
+      entries: solutions
+        .filter(bySurveyId)
+        .filter(byName)
+        .filter(byEmail)
+        .filter(byNumber)
+        .map((p) => {
+          console.log(p);
+          return {
+            _id: p._id.toString(),
+            name: p.name,
+            email: p.email,
+            number: p.number,
+            solution: p.solution,
+            surveyId: p.surveyId,
+          };
+        }),
+      total,
+    };
+  },
+};
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+            </div>
+            
+            <footer class="footer">
+                <div class="content has-text-centered">
+                    <p>Documentation generated by <a href="https://github.com/jsdoc3/jsdoc">JSDoc 3.6.3</a></p>
+                    <p class="sidebar-created-by">
+                        <a href="https://github.com/SoftwareBrothers/better-docs" target="_blank">BetterDocs theme</a> provided with <i class="fas fa-heart"></i> by 
+                        <a href="http://softwarebrothers.co" target="_blank">SoftwareBrothers - JavaScript Development Agency</a>
+                    </p>
+                </div>
+            </footer>
+            
+        </div>
+        <div id="side-nav" class="side-nav">
+        </div>
+    </div>
+<script src="scripts/app.min.js"></script>
+<script>PR.prettyPrint();</script>
+<script src="scripts/linenumber.js"> </script>
+
+</body>
+</html>
