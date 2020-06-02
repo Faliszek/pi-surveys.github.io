@@ -1,4 +1,4 @@
-# docs.pi-surveys.github.io
+# pi-surveys.github.io
 
 Repozytorium zawiera dokumentacje projektu wykonanego na potrzeby przedmiotu Projekt Inżynierski.
 
